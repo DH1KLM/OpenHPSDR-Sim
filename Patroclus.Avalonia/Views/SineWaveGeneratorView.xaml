@@ -4,7 +4,7 @@
              xmlns:c="clr-namespace:Patroclus.Avalonia.Controls;assembly=Patroclus.Avalonia"
               x:Class="Patroclus.Avalonia.Views.SineWaveGeneratorView"
      >
-  <StackPanel Orientation="Horizontal" Background="AliceBlue" Margin="1,1,1,1" Spacing="6">
+  <StackPanel Orientation="Horizontal" Background="#131E2D" Margin="1,1,1,1" Spacing="6">
     <TextBlock Text="Amplitude" HorizontalAlignment="Left"  VerticalAlignment="Top" />
     <Slider  Width="100" Orientation="Horizontal" HorizontalAlignment="Left"
              Value="{Binding Path=amplitude, Mode=TwoWay}" Minimum="-200" Maximum="0"

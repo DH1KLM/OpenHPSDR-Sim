@@ -8,8 +8,58 @@
 
     <Application.Styles>
       <StyleInclude Source="avares://Avalonia.Themes.Default/DefaultTheme.xaml"/>
-      <StyleInclude Source="avares://Avalonia.Themes.Default/Accents/BaseLight.xaml"/>
+      <StyleInclude Source="avares://Avalonia.Themes.Default/Accents/BaseDark.xaml"/>
       <StyleInclude Source="avares://Patroclus.Avalonia/Controls/MultiSpinner.xaml"/>
+      <Style Selector="Window">
+        <Setter Property="Background" Value="#0B111B"/>
+        <Setter Property="Foreground" Value="#DFE7F1"/>
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize" Value="12"/>
+      </Style>
+      <Style Selector="Border.card">
+        <Setter Property="Background" Value="#131E2D"/>
+        <Setter Property="BorderBrush" Value="#28384C"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="Padding" Value="12"/>
+      </Style>
+      <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="#92A5BD"/></Style>
+      <Style Selector="Button"><Setter Property="Padding" Value="12,7"/></Style>
+      <Style Selector="Button.primary">
+        <Setter Property="Background" Value="#126B68"/>
+        <Setter Property="Foreground" Value="#EDFFFC"/>
+      </Style>
+      <Style Selector="TabItem">
+        <Setter Property="Padding" Value="18,11"/>
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Background" Value="#263D56"/>
+        <Setter Property="BorderBrush" Value="#58718D"/>
+        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="1" CornerRadius="6,6,0,0" Padding="{TemplateBinding Padding}">
+              <ContentPresenter Content="{TemplateBinding Header}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter>
+      </Style>
+      <Style Selector="TabItem:pointerover">
+        <Setter Property="Background" Value="#365574"/>
+      </Style>
+      <Style Selector="TabItem:selected">
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Background" Value="#126B68"/>
+        <Setter Property="BorderBrush" Value="#5EEAD4"/>
+      </Style>
+      <Style Selector="TabItem:selected:pointerover">
+        <Setter Property="Background" Value="#18827D"/>
+      </Style>
+      <Style Selector="TabItem:focus-visible">
+        <Setter Property="BorderBrush" Value="White"/>
+      </Style>
 
     </Application.Styles>
 </Application>

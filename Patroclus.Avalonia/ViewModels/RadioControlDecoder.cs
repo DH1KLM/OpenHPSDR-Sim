@@ -20,9 +20,9 @@ namespace Patroclus.Avalonia.ViewModels
 
         public RadioControlDecoder(bool bandPassFilters) { bpf = bandPassFilters; }
 
-        public (long Revision, DateTime Received, Dictionary<string, ControlReading> Values) Snapshot()
+        public (long Revision, DateTime Received, Dictionary<string, ControlReading> Values, double? RxFrequencyHz) Snapshot()
         {
-            lock (gate) return (revision, lastReceived, new Dictionary<string, ControlReading>(readings));
+            lock (gate) return (revision, lastReceived, new Dictionary<string, ControlReading>(readings), rxFrequency);
         }
 
         private void Set(string key, bool active, string detail = null)

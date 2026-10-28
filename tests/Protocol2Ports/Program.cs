@@ -8,6 +8,16 @@ using Patroclus.Avalonia.Audio;
 using Patroclus.Avalonia.ViewModels;
 
 var radio = new FakeHermesNewProtocol();
+var frequencyMonitor = new ControlMonitor(RadioProfile.All[0]);
+frequencyMonitor.Refresh();
+if (frequencyMonitor.ReceiveFrequencyKhz != "— — —") throw new Exception("Unknown RX frequency must show a placeholder");
+uint displayHz = 14200123;
+frequencyMonitor.Decoder.Protocol1(4, (byte)(displayHz >> 24), (byte)(displayHz >> 16), (byte)(displayHz >> 8), (byte)displayHz);
+frequencyMonitor.Refresh();
+if (frequencyMonitor.ReceiveFrequencyKhz != "14 200.123") throw new Exception("RX display must format kHz with Hz precision");
+frequencyMonitor.Decoder.Protocol1(2, 0, 0x6c, 0x56, 0x60); // TX frequency must not replace RX readout
+frequencyMonitor.Refresh();
+if (frequencyMonitor.ReceiveFrequencyKhz != "14 200.123") throw new Exception("TX tuning changed RX frequency display");
 // A reused mixer must start empty, including after its size changes.
 var mixer = new receiver("buffer reuse"); mixer.generators[0].SetDefaults(1000);
 var referenceMix = new byte[238 * 6];

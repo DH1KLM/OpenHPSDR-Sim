@@ -13,12 +13,14 @@ namespace Patroclus.Avalonia.ViewModels
         public string Detail { get => detail; private set => this.RaiseAndSetIfChanged(ref detail, value); }
         private string compactDetail = "?";
         public string CompactDetail { get => compactDetail; private set => this.RaiseAndSetIfChanged(ref compactDetail, value); }
+        public string DisplayText => string.IsNullOrEmpty(CompactDetail) ? Label : Label + " · " + CompactDetail;
         public ControlLamp(string key, string label) { Key = key; Label = label; }
         public void Update(ControlReading reading)
         {
             Color = reading.Active ? "#22C55E" : "#334155";
             Detail = reading.Detail;
             CompactDetail = reading.Detail == "ON" || reading.Detail == "OFF" ? "" : reading.Detail;
+            this.RaisePropertyChanged(nameof(DisplayText));
         }
     }
 
@@ -67,6 +69,8 @@ namespace Patroclus.Avalonia.ViewModels
         public int[] PinNumbers { get; } = { 1, 2, 3, 4, 5, 6, 7 };
         private string sampleRate = "Not received yet", txSampleRate = "Not received yet", ocObservation = "No OC pattern with a known frequency received yet";
         public string SampleRate { get => sampleRate; private set => this.RaiseAndSetIfChanged(ref sampleRate, value); }
+        private string receiveFrequencyKhz = "— — —";
+        public string ReceiveFrequencyKhz { get => receiveFrequencyKhz; private set => this.RaiseAndSetIfChanged(ref receiveFrequencyKhz, value); }
         public string TxSampleRate { get => txSampleRate; private set => this.RaiseAndSetIfChanged(ref txSampleRate, value); }
         public string OcObservation { get => ocObservation; private set => this.RaiseAndSetIfChanged(ref ocObservation, value); }
         private string ocWire = "OC input: no control data received yet";
@@ -150,6 +154,10 @@ namespace Patroclus.Avalonia.ViewModels
             var snapshot = Decoder.Snapshot();
             if (snapshot.Revision == displayedRevision) return;
             displayedRevision = snapshot.Revision;
+            ReceiveFrequencyKhz = snapshot.RxFrequencyHz.HasValue
+                ? (Math.Round(snapshot.RxFrequencyHz.Value, MidpointRounding.AwayFromZero) / 1000.0)
+                    .ToString("#,##0.000", System.Globalization.CultureInfo.InvariantCulture).Replace(',', ' ')
+                : "— — —";
             foreach (var group in Groups)
                 foreach (var lamp in group.Lamps)
                     if (snapshot.Values.TryGetValue(lamp.Key, out var reading)) lamp.Update(reading);

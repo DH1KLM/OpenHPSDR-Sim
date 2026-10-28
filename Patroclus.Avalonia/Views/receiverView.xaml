@@ -6,7 +6,7 @@
              x:Class="Patroclus.Avalonia.Views.ReceiverView"
       
        >
-  <StackPanel Orientation="Horizontal" Background="AliceBlue" Margin="1,1,1,1"  Spacing="10">
+  <StackPanel Orientation="Horizontal" Background="#131E2D" Margin="1,1,1,1"  Spacing="10">
     <TextBlock Text="{Binding Path=name}" HorizontalAlignment="Left"  VerticalAlignment="Top" FontWeight="Bold" />
     <TextBlock Text="VFO Hz"  HorizontalAlignment="Left"  VerticalAlignment="Top" />
     <TextBlock Text="{Binding vfo, Converter={x:Static p:StringConverters.StringFormat},ConverterParameter=\{0:### ### ###\}}"  HorizontalAlignment="Left"  VerticalAlignment="Top" Width="80"/>
@@ -19,7 +19,7 @@
     <ItemsControl Items="{Binding Path=generators}" HorizontalAlignment="Left" VerticalAlignment="Top" >
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
-          <StackPanel Orientation="Vertical" Background="White" />
+          <StackPanel Orientation="Vertical" Background="#131E2D" />
         </ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>

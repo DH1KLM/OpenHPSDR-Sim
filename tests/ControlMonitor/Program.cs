@@ -163,6 +163,7 @@ oc1.Protocol1(0, 0, 0xaa, 0, 0);
 Check(!oc1.Snapshot().Values.ContainsKey("ocObservation"), "Unknown frequency cannot invent OC band");
 void Frequency1(byte address, uint hz) => oc1.Protocol1(address, (byte)(hz >> 24), (byte)(hz >> 16), (byte)(hz >> 8), (byte)hz);
 Frequency1(4, 14200000); oc1.Protocol1(0, 0, 0xaa, 0, 0);
+Check(oc1.Snapshot().RxFrequencyHz == 14200000, "P1 RX frequency available to digital display");
 Frequency1(2, 7100000); oc1.Protocol1(1, 0, 0x54, 0, 0);
 for (int pin = 0; pin < 7; pin++)
 {
@@ -178,6 +179,7 @@ uint Phase(double hz) => (uint)Math.Round(hz * 4294967296.0 / 122880000.0);
 var ocHp = new byte[1444]; ocHp[1401] = 0x82;
 Word(ocHp, 9, Phase(3800000)); Word(ocHp, 17, Phase(14200000)); Word(ocHp, 329, Phase(7100000));
 oc2.Protocol2HighPriority(ocHp);
+Check(Math.Abs(oc2.Snapshot().RxFrequencyHz.Value - 14200000) < 0.02, "P2 display uses first active DDC and decodes phase word");
 Check(Active(oc2, "oc.20m.rx.0") && Active(oc2, "oc.20m.rx.6"), "P2 RX phase words / sparse DDC / pins 1 and 7");
 Check(!oc2.Snapshot().Values.ContainsKey("oc.80m.rx.0"), "Inactive DDC0 must not select OC band");
 ocHp[4] = 2; ocHp[1401] = 0; oc2.Protocol2HighPriority(ocHp);
@@ -187,6 +189,7 @@ Word(ocHp, 329, 50100000); oc2.Protocol2HighPriority(ocHp);
 Check(!Active(oc2, "oc.6m.tx.0"), "P2 direct Hz flag");
 var unknownFormat = new RadioControlDecoder(false); unknownFormat.Protocol2Rx(ratesPacket); unknownFormat.Protocol2HighPriority(ocHp);
 Check(!unknownFormat.Snapshot().Values.ContainsKey("ocObservation"), "Unknown phase/Hz format stays unknown");
+Check(!unknownFormat.Snapshot().RxFrequencyHz.HasValue, "Display must not invent frequency with unknown format");
 Check(RadioControlDecoder.BandForFrequency(1799999.99) == "160m", "Phase quantization at band edge");
 Check(RadioControlDecoder.BandForFrequency(145000000) == "2m" && RadioControlDecoder.BandForFrequency(1000000) == "GEN", "2m / general classification");
 Console.WriteLine($"PASS: {checks} P1/P2 checks including Hardware Options, sample rates and RX/TX band OC history.");

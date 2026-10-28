@@ -3,28 +3,26 @@
              x:Class="Patroclus.Avalonia.Views.ControlMonitorView">
   <StackPanel Margin="6" Spacing="4">
 
-    <TextBlock Text="Green: ON · Dark: no active state reported · ?: not received yet · Last received client commands"
-               FontSize="11" TextWrapping="Wrap"/>
-    <TextBlock Text="{Binding FilterDescription}" TextWrapping="Wrap" FontSize="11"/>
-    <TextBlock Text="{Binding Activity}" Foreground="#475569" FontSize="10"/>
+    <TextBlock Text="CLIENT CONTROLS     •     Green: active     •     Dark: inactive / unobserved"
+               Foreground="#92A5BD" FontSize="10" TextWrapping="Wrap" Margin="0,4,0,4"/>
+    <TextBlock Text="{Binding Activity}" Foreground="#92A5BD" FontSize="10"/>
     <ItemsControl Items="{Binding Groups}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
         <DataTemplate>
-          <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4" Padding="7,5" Margin="0,0,5,5">
+          <Border BorderBrush="#28384C" Background="#131E2D" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,8,8" IsVisible="{Binding !IsRaw}">
             <StackPanel Spacing="3">
-              <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Bold"/>
+              <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,6"/>
               <ItemsControl Items="{Binding Lamps}" IsVisible="{Binding !IsRaw}">
-                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <StackPanel Orientation="Horizontal" Margin="0,3,12,3" Spacing="5" MinWidth="78" ToolTip.Tip="{Binding Detail}">
+                    <Grid ColumnDefinitions="16,*" Margin="0,3,10,3" MinHeight="20" ToolTip.Tip="{Binding Detail}">
                       <Ellipse Width="16" Height="16" Fill="{Binding Color}" VerticalAlignment="Center"/>
-                      <TextBlock Text="{Binding Label}" FontSize="11" VerticalAlignment="Center"/>
-                      <TextBlock Text="{Binding CompactDetail}" FontSize="10" Foreground="#475569" VerticalAlignment="Center"/>
-                    </StackPanel>
+                      <TextBlock Grid.Column="1" Text="{Binding DisplayText}" Margin="7,0,0,0" VerticalAlignment="Center" FontSize="11" Foreground="#E6EEF8" TextWrapping="Wrap"/>
+                    </Grid>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>

@@ -7,7 +7,7 @@
             >
   <Grid RowDefinitions="auto,*"  >
         
-        <Grid Background="AliceBlue">
+        <Grid Background="#131E2D">
           <ContentControl Content="{Binding}">
             <ContentControl.DataTemplates>
               <DataTemplate DataType="{x:Type vm:FakeHermes}">

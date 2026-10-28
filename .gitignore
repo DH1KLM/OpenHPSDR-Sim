@@ -7,6 +7,8 @@
 *.sln.docstates
 
 # Build results
+artifacts/
+run/
 
 [Dd]ebug/
 [Rr]elease/

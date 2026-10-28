@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net6.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Patroclus.Avalonia/ViewModels/PacketTiming.cs" Link="PacketTiming.cs" />
+    <Compile Include="../../Patroclus.Avalonia/ViewModels/Protocol2Microphone.cs" Link="Protocol2Microphone.cs" />
+  </ItemGroup>
+</Project>

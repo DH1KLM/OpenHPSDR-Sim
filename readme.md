@@ -1,42 +1,50 @@
-﻿Patroclus - Software Defined Radio Emulator
-===========================================
+# OpenHPSDR-Sim
 
-## Introduction
+HPSDR-Netzwerkemulator auf Basis von Patroclus-p2-default-ports (Alan Hopper, MIT).
+Unterstützt Protocol 1 und Protocol 2, synthetische IQ-Signale und einen passiven
+Monitor für vom Client gesendete Betriebsparameter.
+Die Oberfläche ist englisch. TX-Sprache lässt sich als WAV aufnehmen: Modus
+SSB/AM/FM wählen, **Record WAV…**, senden, anschließend **Stop**.
+[Hinweise zur Aufnahme](docs/tx-audio-recording.md).
+Optional startet **Auto record TX** pro PTT-Sendung automatisch eine WAV-Datei
+mit Datum, Uhrzeit und ausgewählter Betriebsart. Die Automatik ist beim Start aus.
 
-This software emulates a HPSDR Hermes transceiver.
-It adds together a user selectable number of sine wave signals and recorded .wav IQ files for each enabled receiver.
-It will generate signals for as many receivers as the client requests.
-Currently only the command and control messages needed for signal generation are emulated. 
+## Starten
 
-It was written as an exercise to gain understanding of Hermes and sdr in general.
-If time and motivation allow it might be extended to emulate other radios and protocols.
+`Start-OpenHPSDR-Sim.cmd` startet die aktuelle Anwendung unter `run`.
+Dafür wird die .NET-6-Laufzeit benötigt. Nur eine Emulatorinstanz gleichzeitig
+starten (UDP-Port 1024). „Immer im Vordergrund“ ist oben rechts schaltbar.
 
-It has been tested with the following sdr clients
+## Entwickeln
 
-  * [CuSDR64 0.3.2.14](https://plus.google.com/107168125384405552048/posts) - Works well, although CuSDR does send out wrong tx frequency commands.
+- `Patroclus.Avalonia/`: aktive Anwendung; Projektname und Namespaces bleiben für
+  Ressourcen- und XAML-Kompatibilität erhalten.
+- `tests/`: Prüfprogramme für Decoder, Hardwareprofile, P2-Ports und Paket-Timing.
+- `docs/`: Funktionsbeschreibung und Prüfstand.
+- `run/`: aktuelle ausführbare Windows-x64-Version einschließlich benötigter Bibliotheken.
 
-  * [KISS Konsole 1.1.28](http://openhpsdr.org/wiki/index.php?title=KISS_Konsole) - This does not allow connections to a receiver on the same ip address as itself so you either have to run the emulator somewhere else on the network or remove the check from the source of KISS (in EthernetDevice.cs)
+Solution: `OpenHPSDR-Sim.sln`.
 
-  * [PowerSDR mRX PS 3.2.19](http://openhpsdr.org/wiki/index.php?title=PowerSDR) - No problems.
+Build der startbaren Anwendung:
 
-  * [SDR#](http://sdrsharp.com/) using [ExtIO_hpsdr_msvc.dll](https://github.com/amontefusco/extio-hermes) - The extio dll rejects connections from the same ip address as itself so again the emulator has to run elsewhere on the network. 
+```powershell
+dotnet publish Patroclus.Avalonia/Patroclus.Avalonia.csproj -c Release -r win-x64 --self-contained false -p:DebugType=None -p:DebugSymbols=false -o ./run
+```
 
-  * [HDSDR](http://www.hdsdr.de/) using [ExtIO_hpsdr_msvc.dll](https://github.com/amontefusco/extio-hermes) - Same as SDR#
+Prüfungen:
 
-  * Thetis V2.1.18 will run on same pc.
+```powershell
+dotnet run --project tests/ControlMonitor/ControlMonitor.csproj -c Release
+dotnet run --project tests/Protocol2Ports/Protocol2Ports.csproj -c Release
+dotnet run --project tests/RadioProfiles/RadioProfiles.csproj -c Release
+dotnet run --project tests/PacketTiming/PacketTiming.csproj -c Release
+dotnet run --project tests/TxAudio/TxAudio.csproj -c Release
+dotnet run --project tests/RxTxSwitching/RxTxSwitching.csproj -c Release
+```
 
-  * [SparkSDR](http://www.ihopper.org/radio/) my client for [Hermes Lite](https://github.com/softerhardware/Hermes-Lite) - emulator will provide up to 32 receivers for hermes lite extended old protocol.
+[Funktionsbeschreibung und Grenzen](docs/client-control-monitor.md) ·
+[Prüfstand](docs/validation-client-monitor.md) · [MIT-Lizenz](LICENSE.txt)
 
-## Build
-
-The original Patroclus project is depreciated but can be built with Visual Studio 2013 or later.
-It uses .net4.5
-
-Patroclus.Avalonia is where any further development will be, it has the advantage of running on windows, linux and macos. To build install the .net6.0 sdk then from the Patroclus.Avalonia directory run the following:-
-
-dotnet restore
-
-dotnet run
-
-![Patroclus](docs/patroclus.JPG)
-
+Die OC-Bandtabelle enthält beobachtete Zustände, keine vollständige Kopie der
+Client-Konfiguration. Die Untersuchung der Aether-Aussetzer ist nicht Bestandteil
+der bisherigen Erweiterungen.

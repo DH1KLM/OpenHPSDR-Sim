@@ -1,4 +1,4 @@
-﻿// from http://msdn.microsoft.com/en-us/magazine/dd419663.aspx#id0090030
+// from http://msdn.microsoft.com/en-us/magazine/dd419663.aspx#id0090030
 
 using System;
 using System.Collections.Generic;

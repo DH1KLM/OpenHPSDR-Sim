@@ -1,34 +1,101 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Patroclus.Avalonia.ViewModels;assembly=Patroclus.Avalonia"
         xmlns:v="clr-namespace:Patroclus.Avalonia.Views;assembly=Patroclus.Avalonia"
         xmlns:c="clr-namespace:Patroclus.Avalonia.Controls;assembly=Patroclus.Avalonia"
         xmlns:p="clr-namespace:Patroclus;assembly=Patroclus.Avalonia"
+        xmlns:audio="clr-namespace:Patroclus.Avalonia.Audio;assembly=Patroclus.Avalonia"
         Icon="avares://Patroclus.Avalonia/Assets/avalonia-logo.ico"
-        Title="Patroclus.Avalonia"
+        Title="OpenHPSDR-Sim — Client Monitor"
         x:Class="Patroclus.Avalonia.Views.MainWindow"
-        Width="600" Height="400"
+        x:Name="EmulatorWindow"
+        Width="1080" Height="740" MinWidth="800" MinHeight="540"
         >
   <!--
   <Design.DataContext>
     <vm:MainWindowViewModel/>
   </Design.DataContext>-->
 
-  <DockPanel >
+  <DockPanel Margin="8">
     <StackPanel DockPanel.Dock="Top">
+      <DockPanel>
+        <ToggleButton DockPanel.Dock="Right" Content="Always on top" Margin="12,0,0,0"
+                      VerticalAlignment="Center"
+                      IsChecked="{Binding Topmost, ElementName=EmulatorWindow, Mode=TwoWay}"
+                      ToolTip.Tip="Keep the emulator above other windows. Click again to turn off."/>
       <StackPanel Orientation="Horizontal" Spacing="10">
         <TextBlock Text="Radio:" />
-        <DropDown SelectedIndex="{Binding radioType, Mode=TwoWay}"  >
-          <DropDownItem>HPSDR Hermes</DropDownItem>
-          <DropDownItem>HPSDR Hermes new protocol</DropDownItem>
-          <DropDownItem>Hermes Lite</DropDownItem>
-          <DropDownItem>Hermes Lite 2</DropDownItem>
-        </DropDown>
+        <ComboBox Items="{Binding RadioProfiles}"
+                  SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
+                  MinWidth="290" MaxDropDownHeight="420" />
       </StackPanel>
+      </DockPanel>
+      <TextBlock Text="{Binding SelectedProfile.Description}" Margin="0,2,0,4" FontSize="11" />
+    <Border DataContext="{Binding radio.Monitor}" Margin="0,0,0,5" Background="#E8EEF5" CornerRadius="4" Padding="8,6">
+      <StackPanel Spacing="2">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Ellipse Width="16" Height="16" Fill="{Binding ClientColor}" VerticalAlignment="Center"/>
+          <TextBlock Text="Client" FontWeight="Bold"/>
+          <TextBlock Text="{Binding ClientEndpoint}" FontWeight="SemiBold"/>
+          <TextBlock Text="{Binding ProtocolLabel}"/>
+          <TextBlock Text="{Binding ClientStatus}"/>
+        </StackPanel>
+        <TextBlock Text="Client IP:UDP port · HPSDR does not transmit the application name."
+                   FontSize="10" Foreground="#475569" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
        
     </StackPanel>
     
-    <v:FakeRadioView DataContext="{Binding radio}"></v:FakeRadioView>
+    <Border DockPanel.Dock="Top" DataContext="{Binding radio}" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4" Padding="7" Margin="0,0,0,6">
+      <StackPanel Spacing="3">
+        <WrapPanel>
+          <TextBlock Text="TX audio recording" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+          <ComboBox x:Name="RecordingMode" SelectedIndex="0" MinWidth="70" IsEnabled="{Binding CanChangeRecordingMode}" Margin="0,0,6,0">
+            <ComboBoxItem Content="USB" Tag="{x:Static audio:TxAudioMode.USB}"/>
+            <ComboBoxItem Content="LSB" Tag="{x:Static audio:TxAudioMode.LSB}"/>
+            <ComboBoxItem Content="AM" Tag="{x:Static audio:TxAudioMode.AM}"/>
+            <ComboBoxItem Content="FM" Tag="{x:Static audio:TxAudioMode.FM}"/>
+            <ComboBoxItem Content="SSB (USB/LSB)" Tag="{x:Static audio:TxAudioMode.SSB}"/>
+          </ComboBox>
+          <Button Content="Record WAV…" Click="StartRecording" IsEnabled="{Binding CanStartManualRecording}" Margin="0,0,6,0"/>
+          <Button Content="Stop" Click="StopRecording" IsEnabled="{Binding IsRecording}" Margin="0,0,10,0"/>
+          <Button Content="{Binding AutoRecordButtonText}" Click="ToggleAutoRecording" IsEnabled="{Binding !IsRecording}" Margin="0,0,10,0"/>
+          <TextBlock Text="{Binding RecordingStatus}" FontSize="11" VerticalAlignment="Center"/>
+        </WrapPanel>
+        <TextBlock Text="{Binding AutoRecordingStatus}" FontSize="10" Foreground="#475569" TextWrapping="Wrap"/>
+        <TextBlock Text="Match the client's TX mode. Records transmit periods only; pauses between transmissions are omitted. FM assumes 5 kHz deviation."
+                   FontSize="10" Foreground="#475569" TextWrapping="Wrap"/>
+        <TextBlock x:Name="RecordingError" Foreground="#B91C1C" FontSize="11" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding TxInputStatus}" FontWeight="SemiBold" FontSize="11" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding ControlInputStatus}" FontSize="10" Foreground="#475569" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding StreamTimingStatus}" FontSize="10" Foreground="#475569" TextWrapping="Wrap"/>
+        <WrapPanel>
+          <CheckBox Content="Mute RX during TX" IsChecked="{Binding MuteRxDuringTx, Mode=TwoWay}" Margin="0,0,14,0"
+                    ToolTip.Tip="Default: silence receiver IQ on PTT without stopping packet clocks. Disable to restore P2 test signals or P1 legacy TX-IQ loopback. This is separate from the client's display DUP setting."/>
+          <TextBlock Text="{Binding RxTxStatus}" FontSize="11" VerticalAlignment="Center"/>
+        </WrapPanel>
+        <TextBlock Text="Hardware microphone samples are silent in this emulator. For PC speech, configure Thetis VAC1 with a microphone input."
+                   FontSize="10" Foreground="#475569" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+    <TabControl>
+      <TabItem Header="Client controls / LEDs">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <v:ControlMonitorView DataContext="{Binding radio.Monitor}"/>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="Hardware / sample rate / OC">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <v:HardwareOptionsView DataContext="{Binding radio.Monitor}"/>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="Receivers / signal generator">
+        <v:FakeRadioView DataContext="{Binding radio}"/>
+      </TabItem>
+    </TabControl>
     
   </DockPanel>
 </Window>
+
+

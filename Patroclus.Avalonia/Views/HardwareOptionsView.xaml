@@ -1,0 +1,95 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Patroclus.Avalonia.Views.HardwareOptionsView">
+  <StackPanel Margin="6" Spacing="6">
+    <TextBlock Text="{Binding HardwareDescription}" TextWrapping="Wrap" FontSize="11"/>
+    <Grid ColumnDefinitions="*,*">
+      <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,6,0">
+        <StackPanel Spacing="5">
+          <TextBlock Text="Hardware Options" FontWeight="Bold"/>
+          <ItemsControl Items="{Binding HardwareOptions.Lamps}">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Orientation="Horizontal" Margin="0,3,15,3" Spacing="5" ToolTip.Tip="{Binding Detail}">
+                  <Ellipse Width="16" Height="16" Fill="{Binding Color}" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding Label}" FontSize="12" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding CompactDetail}" FontSize="11" Foreground="#475569" VerticalAlignment="Center"/>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="1" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4" Padding="8">
+        <StackPanel Spacing="4">
+          <TextBlock Text="Sample rate (requested by client)" FontWeight="Bold"/>
+          <TextBlock Text="{Binding SampleRate}" TextWrapping="Wrap" FontSize="12"/>
+          <StackPanel Orientation="Horizontal" Spacing="5">
+            <TextBlock Text="TX:" FontSize="11"/>
+            <TextBlock Text="{Binding TxSampleRate}" FontSize="11"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+    <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4" Padding="8">
+      <StackPanel Spacing="5">
+        <TextBlock Text="OC control · observed RX/TX pins by band" FontWeight="Bold"/>
+        <TextBlock Text="Green: pin active · Dark: no active pin reported. Unobserved pins also remain dark; see tooltips for details."
+                   TextWrapping="Wrap" FontSize="11"/>
+        <TextBlock Text="Last observation per band and RX/TX since profile selection. Frequency-based mapping; P2 RX uses the first active DDC."
+                   TextWrapping="Wrap" FontSize="10" Foreground="#475569"/>
+        <TextBlock Text="{Binding OcWire}" FontSize="12" FontWeight="SemiBold"/>
+        <TextBlock Text="Thetis: enable Ext Control. Band checkboxes alone do not enable outputs; TX pins are reported during transmission."
+                   TextWrapping="Wrap" FontSize="11"/>
+        <Grid ColumnDefinitions="65,175,175,*" RowDefinitions="Auto,Auto">
+          <TextBlock Text="Band" FontWeight="SemiBold"/>
+          <TextBlock Grid.Column="1" Text="OC Receive Pins" FontWeight="SemiBold"/>
+          <TextBlock Grid.Column="2" Text="OC Transmit Pins" FontWeight="SemiBold"/>
+          <ItemsControl Grid.Row="1" Grid.Column="1" Items="{Binding PinNumbers}">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="7"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" HorizontalAlignment="Center" FontSize="11"/></DataTemplate></ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <ItemsControl Grid.Row="1" Grid.Column="2" Items="{Binding PinNumbers}">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="7"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" HorizontalAlignment="Center" FontSize="11"/></DataTemplate></ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
+        <ItemsControl Items="{Binding OcRows}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Grid ColumnDefinitions="65,175,175,*" Margin="0,1">
+                <TextBlock Text="{Binding Band}" FontSize="12" VerticalAlignment="Center"/>
+                <ItemsControl Grid.Column="1" Items="{Binding RxPins}">
+                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Width="25" Height="20" ToolTip.Tip="{Binding Detail}">
+                        <Ellipse Width="16" Height="16" Fill="{Binding Color}"/>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ItemsControl Grid.Column="2" Items="{Binding TxPins}">
+                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Width="25" Height="20" ToolTip.Tip="{Binding Detail}">
+                        <Ellipse Width="16" Height="16" Fill="{Binding Color}"/>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Text="{Binding OcObservation}" FontSize="11" Foreground="#475569" TextWrapping="Wrap"/>
+        <TextBlock Text="Frequency is the hardware tuning frequency; with CTUN it may differ from the Thetis VFO. The full OC setup table is not transmitted."
+                   FontSize="10" Foreground="#475569" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>
+
+

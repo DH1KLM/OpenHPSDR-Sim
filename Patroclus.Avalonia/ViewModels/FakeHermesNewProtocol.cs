@@ -1,10 +1,11 @@
-﻿using Avalonia.Threading;
+using Avalonia.Threading;
 using ReactiveUI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -28,6 +29,8 @@ namespace Patroclus.Avalonia.ViewModels
 
         const int maxReceivers = 80;
         private bool usePhaseWord = false;
+        private int recordingSampleRate = 192000;
+        private bool recordingPtt;
 
         Dictionary<receiver, UdpClient> rxClients = new Dictionary<receiver, UdpClient>();
 
@@ -36,6 +39,7 @@ namespace Patroclus.Avalonia.ViewModels
         private Thread handleCommsThread;
 
         public int port { get; set; } //Port for the Client to use
+        public RadioProfile Profile { get; set; } = RadioProfile.All[1];
 
 
         IPEndPoint ClientIpEndPoint;
@@ -50,8 +54,7 @@ namespace Patroclus.Avalonia.ViewModels
         uint micSeqNo = 0;
 
         double timebase = 0.0;
-        byte hermesCodeVersion = 30;
-        DateTime startTime;
+        private readonly Stopwatch streamClock = new Stopwatch();
         bool running = false;
 
         double clk = 122880000;
@@ -146,6 +149,7 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
 
         public FakeHermesNewProtocol()
         {
+            Monitor = new ControlMonitor(Profile);
    //         BindingOperations.CollectionRegistering += BindingOperations_CollectionRegistering;
 
         }
@@ -212,6 +216,7 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
 
         public void start()
         {
+            Monitor = new ControlMonitor(Profile);
             generalClient = new udpConnection() { Client = connect(port), msgQueue = new ConcurrentQueue<receivedPacket>() };
             generalClient.Client.BeginReceive(new AsyncCallback(incomming), generalClient);
 
@@ -236,6 +241,13 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
             handleCommsThread.Start();
 
         }
+        //DH1KLM: Zero General port-table entries select Protocol 2 default ports.
+        private static int DecodePort(byte[] packet, int offset, int defaultPort)
+        {
+            int port = (packet[offset] << 8) | packet[offset + 1];
+            return port == 0 ? defaultPort : port;
+        }
+
         private UdpClient connect(int port)
         {
             UdpClient client = new UdpClient(port);
@@ -251,6 +263,7 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
         public override void Stop()
         {
             closing = true;
+            handleCommsThread?.Join();
            // handleCommsThread.Abort();
             generalClient.Client.Close();
             rxSpecificClient.Client.Close();
@@ -258,45 +271,60 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
             highPriorityClient.Client.Close();
             tx0IQClient.Client.Close();
             rxAudioClient.Client.Close();
-            //TODO rest of cleanup
+            foreach (var rxClient in rxClients.Values) rxClient.Close();
+            rxClients.Clear();
 
             base.Stop();
         }
         long actualPacketCount = 0;
+        private long lastControlArrival, lastControlHandled, lastControlDelayMs;
+        private byte lastControlFlags;
+        private uint lastControlSequence;
+        private bool controlSequenceKnown;
+        private IPEndPoint controlPeer;
+        protected override string ControlStatus
+        {
+            get
+            {
+                long arrival = Interlocked.Read(ref lastControlArrival), handled = Interlocked.Read(ref lastControlHandled);
+                string age = handled == 0 ? "none" : $"{(Stopwatch.GetTimestamp() - handled) * 1000 / Stopwatch.Frequency} ms";
+                string inputAge = arrival == 0 ? "none" : $"{(Stopwatch.GetTimestamp() - arrival) * 1000 / Stopwatch.Frequency} ms";
+                return $"P2 control: flags 0x{lastControlFlags:X2} · seq {lastControlSequence} · received {inputAge} ago / handled {age} ago · delay {Interlocked.Read(ref lastControlDelayMs)} ms · queues HP {highPriorityClient?.msgQueue?.Count ?? 0}, TX {tx0IQClient?.msgQueue?.Count ?? 0}";
+            }
+        }
+
+        private void Drain(udpConnection connection, Action<receivedPacket> handler, int budget)
+        {
+            for (int i = 0; i < budget && !closing && connection.msgQueue.TryDequeue(out var packet); i++) handler(packet);
+        }
+
+        private void HandleIncomingPackets()
+        {
+            // Never wait for a busy IQ/audio queue to become empty. Revisit PTT
+            // between bounded batches, even when the client sends continuously.
+            Drain(generalClient, handleGeneralPacket, 8);
+            Drain(highPriorityClient, handleHighPriorityPacket, 64);
+            Drain(rxSpecificClient, handleRxSpecificPacket, 8);
+            Drain(txSpecificClient, handleTxSpecificPacket, 8);
+            for (int batch = 0; batch < 8 && !closing; batch++)
+            {
+                Drain(highPriorityClient, handleHighPriorityPacket, 16);
+                Drain(tx0IQClient, p => handleTxIQPacket(p, 0), 8);
+            }
+            Drain(rxAudioClient, handleRXAudioPacket, 32);
+        }
+
         void handleComms()
         {
+            using var scheduling = new StreamThreadScheduling();
+            streamScheduling = scheduling.Description;
             while (!closing)
             {
-                while (!generalClient.msgQueue.IsEmpty)
-                {
-                    receivedPacket packet;
-                    if (generalClient.msgQueue.TryDequeue(out packet)) handleGeneralPacket(packet);
-                }
-                while (!rxSpecificClient.msgQueue.IsEmpty)
-                {
-                    receivedPacket packet;
-                    if (rxSpecificClient.msgQueue.TryDequeue(out packet)) handleRxSpecificPacket(packet);
-                }
-                while (!txSpecificClient.msgQueue.IsEmpty)
-                {
-                    receivedPacket packet;
-                    if (txSpecificClient.msgQueue.TryDequeue(out packet)) handleTxSpecificPacket(packet);
-                }
-                while (!highPriorityClient.msgQueue.IsEmpty)
-                {
-                    receivedPacket packet;
-                    if (highPriorityClient.msgQueue.TryDequeue(out packet)) handleHighPriorityPacket(packet);
-                }
-                while (!tx0IQClient.msgQueue.IsEmpty)
-                {
-                    receivedPacket packet;
-                    if (tx0IQClient.msgQueue.TryDequeue(out packet)) handleTxIQPacket(packet, 0);
-                }
-                while (!rxAudioClient.msgQueue.IsEmpty)
-                {
-                    receivedPacket packet;
-                    if (rxAudioClient.msgQueue.TryDequeue(out packet)) handleRXAudioPacket(packet);
-                }
+                ObserveStreamLoop(running);
+                HandleIncomingPackets();
+                bool pending = !generalClient.msgQueue.IsEmpty || !highPriorityClient.msgQueue.IsEmpty
+                    || !rxSpecificClient.msgQueue.IsEmpty || !txSpecificClient.msgQueue.IsEmpty
+                    || !tx0IQClient.msgQueue.IsEmpty || !rxAudioClient.msgQueue.IsEmpty;
                 //send any output
                 if (running)
                 {
@@ -305,28 +333,33 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
                     int channels = receivers.Count();
                     int nSamples = 238;
                    
-                    DateTime now = DateTime.Now;
-                    long totalTime = (long)(now - startTime).TotalMilliseconds;
+                    //DH1KLM: A monotonic elapsed clock keeps IQ pacing independent of wall-clock adjustments.
+                    long totalTime = streamClock.ElapsedMilliseconds;
 
                     double ttimebase = timebase;
 
                     for (int ri = 0; ri < receivers.Count; ri++)
                     {
+                        if (!running) break;
                         
                         var rx = receivers[ri];
                         if (rx != null)
                         {
                             double timeStep = 1.0 / rx.bandwidth;
 
-                            //calculate number of packets to maintain sync
-                            long nPacketsCalculated = rx.bandwidth / (nSamples) * totalTime / 1000;
+                            long nPacketsCalculated = PacketTiming.DuePackets(rx.bandwidth, nSamples, totalTime);
 
                             long packetsToSend = nPacketsCalculated - rx.packetCount;
+                            ObserveStreamBacklog(packetsToSend, nSamples, rx.bandwidth);
+                            if (packetsToSend > 16) pending = true;
+                            packetsToSend = Math.Min(16, packetsToSend);
 
 
 
                             for (int i = 0; i < packetsToSend; i++)
                             {
+                                if (i % 4 == 0) Drain(highPriorityClient, handleHighPriorityPacket, 16);
+                                if (!running) break;
                                 int seqNo = rx.seq;
                                 rx.seq++;
                                 //sequence no
@@ -356,7 +389,7 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
 
 
 
-                                rx.GenerateSignal(databuf, 16, 6, nSamples, rx.timebase, timeStep);
+                                GenerateReceiverSignal(rx, databuf, nSamples, timeStep);
                                 rxClients[rx].Send(databuf, databuf.Length, ClientIpEndPoint);
                                 rx.packetCount++;
                                 packetsSent++;
@@ -369,17 +402,29 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
                     }
                 //    timebase = ttimebase;
                     //  if (highPriorityToPC != null) 
-                    sendHighPriorityToPC();
+                    if (running) sendHighPriorityToPC();
 
-                    long nMicPacketsCalculated = 48000 / 720 * totalTime / 1000;
-                    uint micPacketsToSend = ((uint)nMicPacketsCalculated) - micSeqNo;
-                    for (int i = 0; i < micPacketsToSend; i++) sendMicData();
+                    long micPacketsToSend = Protocol2Microphone.DuePackets(totalTime) - micSeqNo;
+                    if (micPacketsToSend > 32) pending = true;
+                    for (long i = 0; running && i < Math.Min(32, micPacketsToSend); i++) sendMicData();
                 }
 
 
-                Thread.Sleep(1);
+                Thread.Sleep(pending ? 0 : 1);
             }
         }
+        // Silence only the IQ payload. Packet headers, sequence, receiver clocks,
+        // microphone packets and high-priority status continue on their normal paths.
+        private void GenerateReceiverSignal(receiver rx, byte[] output, int samples, double timeStep)
+        {
+            if (recordingPtt && MuteRxDuringTx)
+            {
+                Array.Clear(output, 16, samples * 6);
+                rx.adcClip = false;
+            }
+            else rx.GenerateSignal(output, 16, 6, samples, rx.timebase, timeStep);
+        }
+
         byte[] hpbuf = new byte[60];
 
         void sendHighPriorityToPC()
@@ -396,15 +441,10 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
             seqNo++;
 
         }
-        byte[] micbuf = new byte[1444];
 
         void sendMicData()
         {
-
-            micbuf[0] = (byte)(micSeqNo >> 24);
-            micbuf[1] = (byte)((micSeqNo >> 16) & 0xff);
-            micbuf[2] = (byte)((micSeqNo >> 8) & 0xff);
-            micbuf[3] = (byte)(micSeqNo & 0xff);
+            byte[] micbuf = Protocol2Microphone.CreatePacket(micSeqNo);
 
             txSpecificClient.Client.Send(micbuf, micbuf.Length, ClientIpEndPoint);
             micSeqNo++;
@@ -428,11 +468,15 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
             }
             try
             {
-                con.Client.BeginReceive(new AsyncCallback(incomming), con);
                 if (received != null)
                 {
-                    con.msgQueue.Enqueue(new receivedPacket() { received = received, endPoint = RemoteIpEndPoint });
+                    Monitor.Session.Touch(RemoteIpEndPoint);
+                    if (ReferenceEquals(con, highPriorityClient)) Interlocked.Exchange(ref lastControlArrival, Stopwatch.GetTimestamp());
+                    con.msgQueue.Enqueue(new receivedPacket() { received = received, endPoint = RemoteIpEndPoint, receivedAtTicks = Stopwatch.GetTimestamp() });
                 }
+                // Enqueue before rearming so callbacks on the same socket cannot
+                // reorder PTT edges when several datagrams are already buffered.
+                con.Client.BeginReceive(new AsyncCallback(incomming), con);
             }
             catch (Exception)
             {
@@ -442,6 +486,11 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
         IPAddress udpBroadcast = new IPAddress(new byte[] { 255, 255, 255, 255 });
         public void handleGeneralPacket(receivedPacket packet)
         {
+            // P1 and P2 discovery share UDP 1024. A P1 probe has byte 4 == 0,
+            // but is not a P2 General command and must never replace the stream peer.
+            if (packet?.received == null || packet.received.Length != 60
+                || (packet.received[0] == 0xef && packet.received[1] == 0xfe)) return;
+            Monitor.Decoder.Protocol2General(packet.received);
             //     Console.Out.WriteLine("gp");
             byte[] received = packet.received;
             if (packet.endPoint.Address.Equals(udpBroadcast))
@@ -452,44 +501,24 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
             else if (received[4] == 2)
             {
                 //discovery
-                byte[] response = new byte[60];
-                response[0] = 0x0;
-                response[1] = 0x0;
-                response[2] = 0x0;
-                response[3] = 0x0;
-                response[4] = 0x02;
-                //add mac address - kiss does not like blank one
-                response[5] = 0x00;
-                response[6] = 0x00;
-                response[7] = 0x00;
-                response[8] = 0x00;
-                response[9] = 0x00;
-                response[10] = 0x01;
-
-                response[11] = 0x02;//board type
-                response[12] = 23;//code version
-
-                response[20] = 7;
-                response[21] = 1;
+                byte[] response = Profile.CreateDiscoveryResponse();
+                response[4] = running ? (byte)3 : (byte)2;
 
                 status = "Discovered";
-                seqNo = 1;
                 generalClient.Client.Send(response, response.Length, packet.endPoint);
                 packetsSent++;
-
-                ClientIpEndPoint = packet.endPoint;
 
                 Console.WriteLine("disc");
             }
             else if (received[4] == 0)
             {
-                RxSpecificPort = (received[5] << 8) + received[6];
-                TxSpecificPort = (received[7] << 8) + received[8];
+                RxSpecificPort = DecodePort(received, 5, 1025);
+                TxSpecificPort = DecodePort(received, 7, 1026);
 
-                HighPriorityFromPCPort = (received[9] << 8) + received[10];
+                HighPriorityFromPCPort = DecodePort(received, 9, 1027);
                 //   if (highPriorityToPC == null) highPriorityToPC = new UdpClient(HighPriorityToPCPort);
 
-                Rx0Port = (received[17] << 8) + received[18];
+                Rx0Port = DecodePort(received, 17, 1035);
 
                 //   usePhaseWord = (received[37] & 8) != 0;
 
@@ -503,6 +532,8 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
         }
         private void handleRxSpecificPacket(receivedPacket packet)
         {
+            if (packet?.received == null || packet.received.Length < 1444) return;
+            Monitor.Decoder.Protocol2Rx(packet.received);
             //     Console.Out.WriteLine("rxsp");
             int nReceivers = 0;
             byte[] received = packet.received;
@@ -565,18 +596,41 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
         }
         private void handleTxSpecificPacket(receivedPacket packet)
         {
+            Monitor.Decoder.Protocol2Tx(packet?.received);
+            if (packet?.received?.Length >= 60)
+                recordingSampleRate = ((packet.received[14] << 8) | packet.received[15]) * 1000;
             //              Console.Out.WriteLine("txsp");
         }
         private void handleTxIQPacket(receivedPacket packet, int adc)
         {
+            TxSignal.Protocol2(packet?.received);
+            Recorder.Protocol2(packet?.received, recordingSampleRate, recordingPtt);
+            AutoRecorder.Protocol2(packet?.received, recordingSampleRate, recordingPtt);
             //             Console.Out.WriteLine("txiq");
         }
         private void handleHighPriorityPacket(receivedPacket packet)
         {
+            if (packet?.received == null || packet.received.Length < 1444) return;
+            uint sequence = ((uint)packet.received[0] << 24) | ((uint)packet.received[1] << 16)
+                | ((uint)packet.received[2] << 8) | packet.received[3];
+            bool samePeer = controlPeer != null && controlPeer.Equals(packet.endPoint);
+            if (controlSequenceKnown && samePeer && sequence != 0 && unchecked((int)(sequence - lastControlSequence)) <= 0) return;
+            controlSequenceKnown = true; controlPeer = packet.endPoint;
+            lastControlSequence = sequence; lastControlFlags = packet.received[4];
+            long handledAt = Stopwatch.GetTimestamp();
+            Interlocked.Exchange(ref lastControlHandled, handledAt);
+            Interlocked.Exchange(ref lastControlDelayMs, packet.receivedAtTicks == 0 ? 0 : (handledAt - packet.receivedAtTicks) * 1000 / Stopwatch.Frequency);
+            Monitor.Decoder.Protocol2HighPriority(packet.received);
             //         Console.Out.WriteLine("hpp");
 
             byte[] received = packet.received;
             bool run = ((received[4] & 0x01) != 0);
+            recordingPtt = (received[4] & 3) == 3;
+            Volatile.Write(ref transmitActive, recordingPtt);
+            AutoRecorder.SetTransmitting(recordingPtt);
+            TxSignal.SetTransmitting(recordingPtt);
+            if (!recordingPtt) Recorder.Pause();
+            Monitor.Session.ObserveRun(packet.endPoint, run);
             if (run != running)
             {
                 if (run)
@@ -626,7 +680,7 @@ Bits - [0]Time stamp, [1]VITA-49, [2]VNA mode
         }
         void resetTransmission()
         {
-            startTime = DateTime.Now;
+            streamClock.Restart();
             actualPacketCount = 0;
             micSeqNo = 0;
             foreach (receiver rx in receivers)

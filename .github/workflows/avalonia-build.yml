@@ -1,0 +1,40 @@
+name: Avalonia build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and check profiles (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 6.0.x
+      - name: Build Avalonia application including XAML
+        run: dotnet build Patroclus.Avalonia/Patroclus.Avalonia.csproj --configuration Release --nologo
+      - name: Check model profiles and discovery packets
+        run: dotnet run --project tests/RadioProfiles/RadioProfiles.csproj --configuration Release
+      - name: Check control decoder and connection state
+        run: dotnet run --project tests/ControlMonitor/ControlMonitor.csproj --configuration Release
+      - name: Check protocol handlers
+        run: dotnet run --project tests/Protocol2Ports/Protocol2Ports.csproj --configuration Release
+      - name: Check packet timing
+        run: dotnet run --project tests/PacketTiming/PacketTiming.csproj --configuration Release
+      - name: Check TX audio recording
+        run: dotnet run --project tests/TxAudio/TxAudio.csproj --configuration Release
+      - name: Check live UDP RX/TX switching
+        run: dotnet run --project tests/RxTxSwitching/RxTxSwitching.csproj --configuration Release

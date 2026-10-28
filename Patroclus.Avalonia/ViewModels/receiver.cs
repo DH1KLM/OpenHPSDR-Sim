@@ -1,4 +1,4 @@
-﻿using ReactiveUI;
+using ReactiveUI;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -133,10 +133,13 @@ namespace Patroclus.Avalonia.ViewModels
 
             }
         }
+        private double[] signalMixBuffer = Array.Empty<double>();
         public void GenerateSignal(byte[] outbuf,int startOffset,int stride, int nSamples, double timebase, double timestep)
         {
             bool clip = false;
-            double[] buf = new double[nSamples*2];
+            if (signalMixBuffer.Length < nSamples * 2) signalMixBuffer = new double[nSamples * 2];
+            double[] buf = signalMixBuffer;
+            Array.Clear(buf, 0, nSamples * 2);
             GenerateSignal(buf, nSamples, timebase, timestep);
             switch(sampleSize)
             {

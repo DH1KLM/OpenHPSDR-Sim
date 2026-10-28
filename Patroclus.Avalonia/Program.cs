@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using Avalonia;
+using System.Globalization;
 using Avalonia.ReactiveUI;
 using Patroclus.Avalonia.ViewModels;
 using Patroclus.Avalonia.Views;
@@ -10,6 +11,8 @@ namespace Patroclus.Avalonia
     {
         static void Main(string[] args)
         {
+            CultureInfo.DefaultThreadCurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("en-US");
             try
             {
                 BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

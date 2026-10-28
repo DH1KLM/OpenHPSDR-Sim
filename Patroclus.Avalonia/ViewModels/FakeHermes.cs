@@ -1,4 +1,4 @@
-﻿using Avalonia.Threading;
+using Avalonia.Threading;
 using ReactiveUI;
 using System;
 using System.Collections.Concurrent;
@@ -24,8 +24,9 @@ namespace Patroclus.Avalonia.ViewModels
         private Thread handleCommsThread;
 
         public int port { get; set; } //Port for the Client to use
-        public byte boardID { get; set; }
-        public byte hermesCodeVersion { get; set; }
+        public RadioProfile Profile { get; set; } = RadioProfile.All[0];
+        public byte boardID => Profile.BoardId;
+        public byte hermesCodeVersion => Profile.FirmwareVersion;
         
         ConcurrentQueue<receivedPacket> msgQueue = new ConcurrentQueue<receivedPacket>();
         
@@ -45,7 +46,7 @@ namespace Patroclus.Avalonia.ViewModels
         int progSeqNo = 0;
         double timebase = 0.0;
         
-        DateTime startTime;
+        private readonly Stopwatch streamClock = new Stopwatch();
         bool running = false;
         bool bsrunning = false;
         volatile bool txing = false;
@@ -58,6 +59,7 @@ namespace Patroclus.Avalonia.ViewModels
 
         public FakeHermes()
         {
+            Monitor = new ControlMonitor(Profile);
           
             // make sine wave that fits perfectly in 512 samples so it works for all bandscope lengths
             // TODO make adjustable generator for this
@@ -163,6 +165,7 @@ namespace Patroclus.Avalonia.ViewModels
         }
         public void start()
         {
+            Monitor = new ControlMonitor(Profile);
             client = new UdpClient(port);
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -182,6 +185,7 @@ namespace Patroclus.Avalonia.ViewModels
         public override void Stop()
         {
             closing = true;
+            handleCommsThread?.Join();
 
             client.Close();
             
@@ -192,8 +196,11 @@ namespace Patroclus.Avalonia.ViewModels
         int bandScopeHoldoff = 0;
         void handleComms()
         {
+            using var scheduling = new StreamThreadScheduling();
+            streamScheduling = scheduling.Description;
             while (!closing)
             {
+                ObserveStreamLoop(running);
                 while (!msgQueue.IsEmpty)
                 {
                     receivedPacket packet;
@@ -209,12 +216,12 @@ namespace Patroclus.Avalonia.ViewModels
                     double timeStep = 1.0 / bandwidth;
 
 
-                    //calculate number of packets to maintain sync
-                    DateTime now = DateTime.Now;
-                    long totalTime = (long)(now - startTime).TotalMilliseconds;
-                    long nPacketsCalculated = 1+bandwidth / (nSamples * 2) * totalTime / clockError;
+                    //DH1KLM: A monotonic elapsed clock keeps IQ pacing independent of wall-clock adjustments.
+                    long totalTime = streamClock.ElapsedMilliseconds;
+                    long nPacketsCalculated = 1 + PacketTiming.DuePackets(bandwidth, nSamples * 2, totalTime, clockError);
 
                     long packetsToSend = nPacketsCalculated - actualPacketCount;
+                    ObserveStreamBacklog(packetsToSend, nSamples * 2, bandwidth);
 
                     databuf[0] = 0xef;
                     databuf[1] = 0xfe;
@@ -232,7 +239,13 @@ namespace Patroclus.Avalonia.ViewModels
                         int bufStart = 8;
                         for (int block = 0; block < 2; block++)
                         {
-                            if (txing)
+                            if (txing && MuteRxDuringTx)
+                            {
+                                // Preserve P1 packet cadence (including microphone slots).
+                                // Discard stale IQ from the reused buffer while transmitting.
+                                Array.Clear(databuf, bufStart + 8, 504);
+                            }
+                            else if (txing)
                             {
                                 // send back received iq samples
                                 // really need to do something better
@@ -326,9 +339,12 @@ namespace Patroclus.Avalonia.ViewModels
             databuf[startOffset + 7] = hermesCodeVersion;
 
         }
+        private double[] signalMixBuffer = Array.Empty<double>();
         void GenerateSignal(byte[] outputbuf, int startOffset, int stride, int nSamples, double timebase,double timestep,receiver rx)
         {
-            double[] mixbuf = new double[nSamples * 2];//auto cleared to 0
+            if (signalMixBuffer.Length < nSamples * 2) signalMixBuffer = new double[nSamples * 2];
+            double[] mixbuf = signalMixBuffer;
+            Array.Clear(mixbuf, 0, nSamples * 2);
             // combine all signal generatiors
             rx.GenerateSignal(mixbuf, nSamples, timebase, timestep);
             //convert to formatted 24 bit
@@ -371,30 +387,22 @@ namespace Patroclus.Avalonia.ViewModels
                 
         }
 
-        ConcurrentStack<receivedPacket> rxBuffers = new ConcurrentStack<receivedPacket>();
         private void readUDP(UdpClient udpClient)
         {
-            
             Task.Run(async () =>
             {
                 while (!closing)
                 {
-
-                    //todo reuse buffers 
-                    receivedPacket buff = null;
-                    if(!rxBuffers.TryPop(out buff))
-                    { 
-                        buff= new receivedPacket() { received = new byte[1032] };
+                    try
+                    {
+                        // Preserve the actual datagram length instead of exposing stale
+                        // trailing bytes in a reused receive buffer to the packet decoder.
+                        var received = await udpClient.ReceiveAsync();
+                        msgQueue.Enqueue(new receivedPacket { received = received.Buffer,
+                            endPoint = received.RemoteEndPoint, timeStamp = stopwatch.Elapsed });
                     }
-
-                    //  var received = await udpClient.Client.ReceiveAsync(buff, SocketFlags.None );
-                    var remEndPoint = new IPEndPoint(IPAddress.Any,0);
-                    var received = await udpClient.Client.ReceiveMessageFromAsync(buff.received, SocketFlags.None, remEndPoint);
-
-
-                    //     var received = await udpClient.ReceiveAsync();
-                    buff.endPoint = (IPEndPoint)received.RemoteEndPoint;
-                    msgQueue.Enqueue(buff);
+                    catch (ObjectDisposedException) when (closing) { break; }
+                    catch (SocketException) when (closing) { break; }
                 }
             });
         }
@@ -427,35 +435,25 @@ namespace Patroclus.Avalonia.ViewModels
         
         public void handlePacket(receivedPacket packet)
         {
-            byte[] received = packet.received;
+            byte[] received = packet?.received;
+            if (received == null || received.Length < 4 || received[0] != 0xef || received[1] != 0xfe) return;
             
             if (received[2] == 2)
             {
                 //discovery
-                byte[] response = new byte[60];
-                response[0] = 0xef;
-                response[1] = 0xfe;
-                response[2] = 0x02;
-                //add mac address - kiss does not like blank one
-                response[3] = 0x00;
-                response[4] = 0x00;
-                response[5] = 0x00;
-                response[6] = 0x00;
-                response[7] = 0x00;
-                response[8] = 0x01;
-
-                response[9] = hermesCodeVersion;//code version
-                response[10] = boardID;//board type
-                
-                status = "Discovered";
-                seqNo = 1;
-                seqNoBs = 1;
+                byte[] response = Profile.CreateDiscoveryResponse();
+                // Discovery is independent of an active stream. Rewinding its
+                // sequence makes clients reject subsequent IQ as stale packets.
+                response[2] = running ? (byte)3 : (byte)2;
+                if (!running) status = "Discovered";
                 client.Send(response, response.Length, packet.endPoint);
                 packetsSent++;
 
             }
             else if (received[2] == 4)
             {
+                Monitor.Session.ObserveRun(packet.endPoint, received[3] != 0);
+                Monitor.Decoder.Protocol1Run(received[3] != 0);
                 if (received[3] > 0)
                 {
                     ClientIpEndPoint = packet.endPoint;
@@ -475,12 +473,19 @@ namespace Patroclus.Avalonia.ViewModels
                 {
                     running = false;
                     bsrunning = false;
+                    txing = false;
+                    Volatile.Write(ref transmitActive, false);
+                    TxSignal.SetTransmitting(false);
+                    Recorder.Pause();
+                    AutoRecorder.SetTransmitting(false);
                     status = "Off";
 
                 }
             }
             else if (received[2] == 1 && received[3] == 2)
             {
+                if (received.Length != 1032) return;
+                Monitor.Session.Touch(packet.endPoint);
                 uint seq = ((uint)received[4] << 24) | ((uint)received[5] << 16) | ((uint)received[6] << 8) | ((uint)received[7]);
                 if(seq!=txseqNo+1)
                 {
@@ -492,9 +497,8 @@ namespace Patroclus.Avalonia.ViewModels
           //      Console.WriteLine(packet.timeStamp.TotalMilliseconds);
 
                 handleCommandControl(received[11], received[12], received[13], received[14], received[15]);
-                handleCommandControl(received[512 + 11], received[512 + 12], received[512 + 13], received[512 + 14], received[512 + 15]);
-
                 handleTXIQandAudio(received, 16, 63);
+                handleCommandControl(received[512 + 11], received[512 + 12], received[512 + 13], received[512 + 14], received[512 + 15]);
                 handleTXIQandAudio(received, 512+16, 63);
             }
             else if(received[2]==3)
@@ -539,15 +543,15 @@ namespace Patroclus.Avalonia.ViewModels
             }
             else { }
 
-            rxBuffers.Push(packet);
         }
         void resetTransmission()
         {
-            startTime = DateTime.Now;
+            streamClock.Restart();
             actualPacketCount = 0;       
         }
         public void handleCommandControl(byte c0,byte c1, byte c2, byte c3, byte c4)
         {
+            Monitor.Decoder.Protocol1(c0, c1, c2, c3, c4, boardID == 6);
 
        //     Console.WriteLine(string.Format("{0}\t{1}\t{2}\t{3}\t{4}", c0, c1, c2, c3, c4));
 
@@ -563,6 +567,9 @@ namespace Patroclus.Avalonia.ViewModels
 //   ccbits[index] = ((uint)c1 << 24) | ((uint)c2 << 16) | ((uint)c3 << 8) | (uint)c4;
             }
             bool tx = ((c0 & 1) == 1);
+            Volatile.Write(ref transmitActive, tx);
+            AutoRecorder.SetTransmitting(tx);
+            TxSignal.SetTransmitting(tx);
             if (tx != txing)
             {
                 txing = tx;
@@ -691,6 +698,9 @@ namespace Patroclus.Avalonia.ViewModels
         int txIQReadIdx = 0;
         public void handleTXIQandAudio(byte[] received, int start, int length)
         {
+            TxSignal.Protocol1(received, start, length, (received[start - 5] & 1) != 0);
+            Recorder.Protocol1(received, start, length, (received[start - 5] & 1) != 0);
+            AutoRecorder.Protocol1(received, start, length, (received[start - 5] & 1) != 0);
             // L1 – Bits  15-8 of Left audio sample 
             // L0 – Bits   7-0 of Left audio sample 
             // R1 – Bits  15-8 of Right audio sample 
@@ -717,6 +727,7 @@ namespace Patroclus.Avalonia.ViewModels
     
     public class receivedPacket
     {
+        public long receivedAtTicks { get; set; }
         public TimeSpan timeStamp { get; set; }
         public IPEndPoint endPoint { get; set; }
         public byte[] received { get; set; }

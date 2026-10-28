@@ -1,102 +1,60 @@
-﻿using ReactiveUI;
-using System;
+using ReactiveUI;
 using System.Collections.Generic;
-using System.Text;
 
 namespace Patroclus.Avalonia.ViewModels
 {
     public class MainWindowViewModel : ViewModelBase
     {
         private FakeRadio _radio;
+        public event System.Action<string> RecordingCompleted;
+
+        private void ObserveRecordings(FakeRadio source)
+        {
+            source.Recorder.RecordingCompleted += path => RecordingCompleted?.Invoke(path);
+            source.AutoRecorder.RecordingCompleted += path => RecordingCompleted?.Invoke(path);
+        }
         public FakeRadio radio
         {
             get { return _radio; }
-            set { this.RaiseAndSetIfChanged(ref _radio, value); }
+            private set { this.RaiseAndSetIfChanged(ref _radio, value); }
         }
 
-        private int _testi=137;
-        public int testi
-        {
-            get { return _testi; }
-            set { this.RaiseAndSetIfChanged(ref _testi, value); }
-        }
+        public IReadOnlyList<RadioProfile> RadioProfiles => RadioProfile.All;
 
-        private int _radioType=0;
-        public int radioType
+        private RadioProfile _selectedProfile;
+        public RadioProfile SelectedProfile
         {
-            get { return _radioType; }
-            set {
-                if(value!=_radioType)
-                {
-                    switch(value)
-                    {
-                        case 0: loadHermes();break;
-                        case 1: loadHermesNP(); break;
-                        case 2: loadHermesLite(); break;
-                        case 3: loadHermesLite2(); break;
-                    }
-                }
-                this.RaiseAndSetIfChanged(ref _radioType, value);
+            get { return _selectedProfile; }
+            set
+            {
+                if (value == null || value == _selectedProfile) return;
+                LoadRadio(value);
+                this.RaiseAndSetIfChanged(ref _selectedProfile, value);
             }
         }
+
         public MainWindowViewModel()
         {
-            loadHermes();
-
-            var s = String.Format("{0:x8}", testi);
-            Console.WriteLine(s);
+            SelectedProfile = RadioProfiles[0];
         }
 
-        private void loadHermes()
+        private void LoadRadio(RadioProfile profile)
         {
-            if (radio != null) radio.Stop();
-            var hermes = new FakeHermes();
-
-            hermes.boardID = 1;
-            hermes.hermesCodeVersion = 30;
-            hermes.port = 1024;
-            hermes.start();
-
-            radio = hermes;
-            
-        }
-        private void loadHermesLite()
-        {
-            if (radio != null) radio.Stop();
-            var hermes = new FakeHermes();
-
-            hermes.boardID = 6;
-            hermes.hermesCodeVersion = 30;
-            hermes.port = 1024;
-            hermes.start();
-
-            radio = hermes;
-            
-        }
-        private void loadHermesLite2()
-        {
-            if (radio != null) radio.Stop();
-            var hermes = new FakeHermes();
-
-            hermes.boardID = 6;
-            hermes.hermesCodeVersion = 40;
-            hermes.port = 1024;
-            hermes.start();
-
-            radio = hermes;
-            
-        }
-        private void loadHermesNP()
-        {
-            if (radio != null) radio.Stop();
-
-            var hermes = new FakeHermesNewProtocol();
-
-            hermes.port = 1024;
-            hermes.start();
-
-            radio = hermes;
-            
+            radio?.Stop();
+            if (profile.Protocol == 1)
+            {
+                var hermes = new FakeHermes { Profile = profile, port = 1024 };
+                ObserveRecordings(hermes);
+                hermes.start();
+                radio = hermes;
+            }
+            else
+            {
+                var hermes = new FakeHermesNewProtocol { Profile = profile, port = 1024 };
+                ObserveRecordings(hermes);
+                hermes.start();
+                radio = hermes;
+            }
         }
     }
 }

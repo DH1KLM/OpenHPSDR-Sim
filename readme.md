@@ -47,3 +47,5 @@ dotnet run --project tests/RxTxSwitching/RxTxSwitching.csproj -c Release
 
 The OC band table contains observed states, not a complete copy of the
 client configuration.
+
+![OpenHPSDR-Sim user interface](ui.png)
